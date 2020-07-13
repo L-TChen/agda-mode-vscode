@@ -122,6 +122,72 @@ module Impl = (Editor: Sig.Editor) => {
       });
   };
 
+  let nextGoal = (state: State.t) => {
+    Goal.updateRanges(state.goals, state.editor);
+    let nextGoal = ref(None);
+    let cursorOffset =
+      Editor.offsetAtPoint(
+        state.editor,
+        Editor.getCursorPosition(state.editor),
+      );
+    let offsets = getOffsets(state);
+
+    // find the first Goal after the cursor
+    offsets->Array.forEach(offset =>
+      if (cursorOffset < offset && nextGoal^ === None) {
+        nextGoal := Some(offset);
+      }
+    );
+
+    // if there's no Goal after the cursor, then loop back and return the first Goal
+    if (nextGoal^ === None) {
+      nextGoal := offsets[0];
+    };
+
+    switch (nextGoal^) {
+    | None => resolved(state)
+    | Some(offset) =>
+      Editor.setCursorPosition(
+        state.editor,
+        Editor.pointAtOffset(state.editor, offset),
+      );
+      resolved(state);
+    };
+  };
+
+  let previousGoal = (state: State.t) => {
+    Goal.updateRanges(state.goals, state.editor);
+    let previousGoal = ref(None);
+    let cursorOffset =
+      Editor.offsetAtPoint(
+        state.editor,
+        Editor.getCursorPosition(state.editor),
+      );
+    let offsets = getOffsets(state);
+
+    // find the last Goal before the cursor
+    offsets->Array.forEach(offset =>
+      if (cursorOffset > offset) {
+        previousGoal := Some(offset);
+      }
+    );
+
+    // loop back if this is already the first Goal
+    if (previousGoal^ === None) {
+      previousGoal := offsets[Array.length(offsets) - 1];
+    };
+
+    switch (previousGoal^) {
+    | None => resolved(state)
+    | Some(offset) =>
+      Editor.setCursorPosition(
+        state.editor,
+        Editor.pointAtOffset(state.editor, offset),
+      );
+      resolved(state);
+    };
+  };
+
   let modifyGoal = (goal, f, state: State.t) => {
     Goal.updateRanges(state.goals, state.editor);
     let content = Goal.getContent(goal, state.editor);
@@ -296,9 +362,24 @@ module Impl = (Editor: Sig.Editor) => {
   };
 
   let localOrGlobal = (local, global, state: State.t): Promise.t(State.t) => {
+    Goal.updateRanges(state.goals, state.editor);
     switch (pointingAt(state)) {
     | None => global
     | Some(goal) => local(goal)
+    };
+  };
+
+  let localOrGlobal2 =
+      (local, localEmpty, global, state: State.t): Promise.t(State.t) => {
+    switch (pointingAt(state)) {
+    | None => global
+    | Some(goal) =>
+      let content = Goal.getContent(goal, state.editor);
+      if (content == "") {
+        localEmpty(goal);
+      } else {
+        local(goal, content);
+      };
     };
   };
 };
