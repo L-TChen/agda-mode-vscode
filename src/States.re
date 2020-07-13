@@ -4,9 +4,8 @@ open VSCode;
 // a dictionary of FileName-State entries
 module StateDict = {
   module Impl = (Editor: Sig.Editor) => {
-    module Dispatcher = Dispatcher.Impl(Editor);
     module State = State.Impl(Editor);
-    let dict: Js.Dict.t((State.t, Dispatcher.t)) = Js.Dict.empty();
+    let dict: Js.Dict.t(State.t) = Js.Dict.empty();
 
     let get = fileName => dict->Js.Dict.get(fileName);
 
@@ -42,10 +41,9 @@ module StateDict = {
     };
     let destroy = fileName => {
       get(fileName)
-      ->Option.forEach(((state, dispatcher)) => {
+      ->Option.forEach(state => {
           Js.log("[ states ][ destroy ]");
           State.destroy(state) |> ignore;
-          Dispatcher.destroy(dispatcher) |> ignore;
         });
       remove(fileName);
     };
@@ -55,10 +53,7 @@ module StateDict = {
     let destroyAll = () => {
       dict
       ->Js.Dict.entries
-      ->Array.forEach(((_, (state, dispatcher))) => {
-          State.destroy(state) |> ignore;
-          Dispatcher.destroy(dispatcher) |> ignore;
-        });
+      ->Array.forEach(((_, state)) => {State.destroy(state) |> ignore});
     };
   };
 };
@@ -66,7 +61,7 @@ module StateDict = {
 module Impl = (Editor: Sig.Editor) => {
   module States = StateDict.Impl(Editor);
   module State = State.Impl(Editor);
-  module Dispatcher = Dispatcher.Impl(Editor);
+  module CommandHandler = State__Command.Impl(Editor);
 
   let addToSubscriptions = (f, context) =>
     f->Js.Array.push(context->ExtensionContext.subscriptions)->ignore;
@@ -94,12 +89,8 @@ module Impl = (Editor: Sig.Editor) => {
 
     // on editor activation, reveal the corresponding Panel (if any)
     Editor.onDidChangeActivation((prev, next) => {
-      prev
-      ->Option.flatMap(States.get)
-      ->Option.forEach(((state, _)) => State.hide(state));
-      next
-      ->Option.flatMap(States.get)
-      ->Option.forEach(((state, _)) => State.show(state));
+      prev->Option.flatMap(States.get)->Option.forEach(State.hide);
+      next->Option.flatMap(States.get)->Option.forEach(State.show);
     })
     ->Editor.addToSubscriptions(context);
 
@@ -119,33 +110,18 @@ module Impl = (Editor: Sig.Editor) => {
                 | None =>
                   // not in the States dict, instantiate one new
                   let state = State.make(context, editor);
-                  let dispatcher = Dispatcher.make();
 
                   // listens to events from the view
                   state.view
                   ->Editor.View.on(
                       fun
-                      | Event(event) => {
-                          Dispatcher.dispatchCommand(
-                            dispatcher,
-                            state,
-                            EventFromView(event),
-                          )
-                          ->ignore;
-                        }
+                      | Event(_event) => ()
                       | Response(_) => (),
                     )
                   ->Editor.addToSubscriptions(context);
 
                   // listens to events from the input method
-                  state.inputMethod.onAction.on(action => {
-                    Dispatcher.dispatchCommand(
-                      dispatcher,
-                      state,
-                      Command.InputMethod(action),
-                    )
-                    ->ignore
-                  })
+                  state.inputMethod.onAction.on(_action => ())
                   ->Editor.Disposable.make
                   ->Editor.addToSubscriptions(context);
 
@@ -155,7 +131,7 @@ module Impl = (Editor: Sig.Editor) => {
                   ->Promise.get(() => {States.destroy(fileName)});
 
                   // add this new constructed State and Dispatcher to the dict
-                  States.add(fileName, (state, dispatcher));
+                  States.add(fileName, state);
                 | Some(_state) =>
                   // already in the States dict, do nothing
                   ()
@@ -166,8 +142,8 @@ module Impl = (Editor: Sig.Editor) => {
           // dispatch Tasks
           editor
           ->States.getByEditor
-          ->Option.forEach(((state, dispatcher)) => {
-              Dispatcher.dispatchCommand(dispatcher, state, command)->ignore
+          ->Option.forEach(state => {
+              CommandHandler.handle(state, command)->ignore
             });
         },
       )
