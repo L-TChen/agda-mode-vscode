@@ -7,6 +7,7 @@ module Impl = (Editor: Sig.Editor) => {
   type context = Editor.context;
   type t = {
     editor,
+    editorTaskQueue: TaskQueue.t,
     context,
     view: Editor.view,
     mutable connection: option(Connection.t),
@@ -76,6 +77,7 @@ module Impl = (Editor: Sig.Editor) => {
 
     let state = {
       editor,
+      editorTaskQueue: TaskQueue.make(),
       context,
       view,
       connection: None,

@@ -9,7 +9,11 @@ module Impl = (Editor: Sig.Editor) => {
 
   // NOTE: helper function of `makeMany`, returns a thunk
   let make =
-      (editor: Editor.editor, diff: SourceFile.Diff.t)
+      (
+        editor: Editor.editor,
+        edit: (Editor.Range.t, string) => Promise.t(unit),
+        diff: SourceFile.Diff.t,
+      )
       : (unit => Promise.t(t)) => {
     // modify the text buffer base on the Diff
     () => {
@@ -18,8 +22,8 @@ module Impl = (Editor: Sig.Editor) => {
           Editor.pointAtOffset(editor, fst(diff.originalRange)),
           Editor.pointAtOffset(editor, snd(diff.originalRange)),
         );
-      Editor.setText(editor, originalRange, diff.content)
-      ->Promise.map(_ => {
+      edit(originalRange, diff.content)
+      ->Promise.map(() => {
           let decorations =
             Decoration.decorateHole(editor, diff.modifiedRange, diff.index);
           {index: diff.index, range: diff.modifiedRange, decorations};
@@ -38,10 +42,15 @@ module Impl = (Editor: Sig.Editor) => {
   // make an array of Goal.t with given goal indices
   // modifies the text buffer along the way
   let makeMany =
-      (editor: Editor.editor, indices: array(int)): Promise.t(array(t)) => {
+      (
+        editor: Editor.editor,
+        edit: (Editor.Range.t, string) => Promise.t(unit),
+        indices: array(int),
+      )
+      : Promise.t(array(t)) => {
     let diffs = generateDiffs(editor, indices);
     // scan through the diffs to modify the text buffer one by one
-    diffs->Array.map(make(editor))->Util.oneByOne;
+    diffs->Array.map(make(editor, edit))->Util.oneByOne;
   };
 
   // parse the whole source file and update the ranges of an array of Goal.t
@@ -67,9 +76,10 @@ module Impl = (Editor: Sig.Editor) => {
     Editor.getTextInRange(editor, innerRange)->Parser.userInput;
   };
 
-  let setContent = (self, editor, text) => {
+  let setContent =
+      (self, editor, edit: (Editor.Range.t, string) => Promise.t(unit), text) => {
     let innerRange = getInnerRange(self, editor);
-    Editor.setText(editor, innerRange, " " ++ text ++ " ");
+    edit(innerRange, " " ++ text ++ " ");
   };
 
   let setCursor = (self, editor) => {

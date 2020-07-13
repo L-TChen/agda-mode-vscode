@@ -63,8 +63,29 @@ module Impl = (Editor: Sig.Editor) => {
     (indentedBy(textBeforeGoal), textBeforeGoal, range);
   };
 
+  //////////////////////////////////////////////////////////////////////////////
+  // Editor manipulation
+  //////////////////////////////////////////////////////////////////////////////
+
   let saveEditor = (state: State.t) =>
     Editor.save(state.editor)->map(_ => state);
+
+  let setText = (range, content, state: State.t) => {
+    state.editorTaskQueue
+    ->TaskQueue.add(() => {
+        Js.log("==== START  ");
+        Editor.setText(state.editor, range, content)
+        ->tap(_ => Js.log(" - - END  "))
+        ->map(
+            fun
+            | true => ()
+            | false => {
+                Js.log("EditM.setText failed");
+              },
+          );
+      })
+    ->map(() => state);
+  };
 
   //////////////////////////////////////////////////////////////////////////////
   // Cursor-related
@@ -107,6 +128,7 @@ module Impl = (Editor: Sig.Editor) => {
     Editor.setCursorPosition(state.editor, point);
     resolved(state);
   };
+
   //////////////////////////////////////////////////////////////////////////////
   // Goal-related
   //////////////////////////////////////////////////////////////////////////////
@@ -115,7 +137,11 @@ module Impl = (Editor: Sig.Editor) => {
     // destroy all existing goals
     state.goals->Array.forEach(Goal.destroy);
     // instantiate new ones
-    Goal.makeMany(state.editor, indices)
+    Goal.makeMany(
+      state.editor,
+      (text, range) => {setText(text, range, state)->map(_ => ())},
+      indices,
+    )
     ->Promise.map(goals => {
         state.goals = goals;
         state;
@@ -194,20 +220,13 @@ module Impl = (Editor: Sig.Editor) => {
     Js.log(
       "[ goal ][ modify ] \"" ++ content ++ "\" => \"" ++ f(content) ++ "\"",
     );
-    Goal.setContent(goal, state.editor, f(content))
-    ->Promise.flatMap(
-        fun
-        | true => resolved(state)
-        | false =>
-          ViewM.displayError(
-            "Goal-related Error",
-            Some(
-              "Failed to modify the content of goal #"
-              ++ string_of_int(goal.index),
-            ),
-            state,
-          ),
-      );
+    Goal.setContent(
+      goal,
+      state.editor,
+      (range, text) => {setText(range, text, state)->map(_ => ())},
+      f(content),
+    )
+    ->map(() => state);
   };
 
   let removeBoundaryAndDestroyGoal = (goal, state: State.t) => {
@@ -221,23 +240,8 @@ module Impl = (Editor: Sig.Editor) => {
       );
     let content =
       Editor.getTextInRange(state.editor, innerRange)->String.trim;
-    Editor.setText(state.editor, outerRange, content)
-    ->Promise.flatMap(
-        fun
-        | true => {
-            Goal.destroy(goal);
-            resolved(state);
-          }
-        | false =>
-          ViewM.displayError(
-            "Goal-related Error",
-            Some(
-              "Unable to remove the boundary of goal #"
-              ++ string_of_int(goal.index),
-            ),
-            state,
-          ),
-      );
+    setText(outerRange, content, state)
+    ->Promise.tap(_ => Goal.destroy(goal));
   };
 
   // replace and insert one or more lines of content at the goal

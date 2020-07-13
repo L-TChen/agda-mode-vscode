@@ -64,20 +64,20 @@ module Impl = (Editor: Sig.Editor) => {
   // from Goal-related action to Tasks
   let handle =
     fun
-    | Instantiate(indices) => [
-        Task.WithStateP(
-          state => {
-            // destroy all existing goals
-            state.goals->Array.forEach(Goal.destroy);
-            // instantiate new ones
-            Goal.makeMany(state.editor, indices)
-            ->Promise.map(goals => {
-                state.goals = goals;
-                [];
-              });
-          },
-        ),
-      ]
+    | Instantiate(_indices) =>
+      // Task.WithStateP(
+      //   state => {
+      //     // destroy all existing goals
+      //     state.goals->Array.forEach(Goal.destroy);
+      //     // instantiate new ones
+      //     Goal.makeMany(state.editor, indices)
+      //     ->Promise.map(goals => {
+      //         state.goals = goals;
+      //         [];
+      //       });
+      //   },
+      // ),
+      []
     | UpdateRange => [
         WithState(state => {Goal.updateRanges(state.goals, state.editor)}),
       ]
@@ -151,34 +151,34 @@ module Impl = (Editor: Sig.Editor) => {
           },
         ),
       ]
-    | Modify(goal, f) => [
+    | Modify(_goal, _f) => [
         Goal(UpdateRange),
-        WithStateP(
-          state => {
-            let content = Goal.getContent(goal, state.editor);
-            Js.log(
-              "[ goal ][ modify ] \""
-              ++ content
-              ++ "\" => \""
-              ++ f(content)
-              ++ "\"",
-            );
-            Goal.setContent(goal, state.editor, f(content))
-            ->Promise.map(
-                fun
-                | true => []
-                | false => [
-                    displayError(
-                      "Goal-related Error",
-                      Some(
-                        "Failed to modify the content of goal #"
-                        ++ string_of_int(goal.index),
-                      ),
-                    ),
-                  ],
-              );
-          },
-        ),
+        // WithStateP(
+        //   state => {
+        //     let content = Goal.getContent(goal, state.editor);
+        //     Js.log(
+        //       "[ goal ][ modify ] \""
+        //       ++ content
+        //       ++ "\" => \""
+        //       ++ f(content)
+        //       ++ "\"",
+        //     );
+        //     Goal.setContent(goal, state.editor, f(content))
+        //     ->Promise.map(
+        //         fun
+        //         | true => []
+        //         | false => [
+        //             displayError(
+        //               "Goal-related Error",
+        //               Some(
+        //                 "Failed to modify the content of goal #"
+        //                 ++ string_of_int(goal.index),
+        //               ),
+        //             ),
+        //           ],
+        //       );
+        //   },
+        // ),
       ]
 
     | SaveCursor => [
