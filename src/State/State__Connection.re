@@ -84,17 +84,22 @@ module Impl = (Editor: Sig.Editor) => {
           },
       )
     ->tap(() => (handle^)->Option.forEach(f => f())) // destructor
-    ->map(() => {
+    ->flatMap(() => {
         Js.Array.sortInPlaceWith(
           (x, y) => compare(fst(x), fst(y)),
           lastResponses,
         )
-        ->Array.map(snd)
-        ->Array.forEach(response => {
+        ->Array.map(((_, response), ()) => {
             // should handle response
-            Js.log(Response.toString(response))
-          });
-        state;
-      });
+            RespM.handle(
+              dispatchCommand,
+              sendRequest(dispatchCommand),
+              response,
+              state,
+            )
+          })
+        ->Util.oneByOne
+      })
+    ->map(_ => state);
   };
 };
