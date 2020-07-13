@@ -2,6 +2,7 @@ open Belt;
 
 module Impl = (Editor: Sig.Editor) => {
   module Decoration = Decoration.Impl(Editor);
+  module ConnM = State__Connection.Impl(Editor);
   module ErrorHandler = Handle__Error.Impl(Editor);
   module GoalHandler = Handle__Goal.Impl(Editor);
   module CommandHandler = Handle__Command.Impl(Editor);
@@ -44,7 +45,7 @@ module Impl = (Editor: Sig.Editor) => {
         };
 
     state
-    ->State.sendRequestToAgda(req)
+    ->ConnM.sendRequestToAgda(req)
     ->Promise.flatMap(
         fun
         | Ok(connection) => {

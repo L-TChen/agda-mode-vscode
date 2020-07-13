@@ -8,7 +8,37 @@ module Impl = (Editor: Sig.Editor) => {
   module ErroM = State__Error.Impl(Editor);
   module RespM = State__Response.Impl(Editor);
   open Belt;
-  let rec sendAgdaRequest = (dispatchCommand, defer, state, req) => {
+
+  let sendRequestToAgda =
+      (state, request): Promise.t(result(Connection.t, Error.t)) => {
+    state
+    ->State.connect
+    ->Promise.mapOk(connection => {
+        let version = connection.metadata.version;
+        let filepath =
+          Editor.getFileName(state.editor)->Option.getWithDefault("");
+        let libraryPath = Editor.Config.getLibraryPath();
+        let highlightingMethod = Editor.Config.getHighlightingMethod();
+        let backend = Editor.Config.getBackend();
+        let encoded =
+          Request.encode(
+            state.editor,
+            version,
+            filepath,
+            backend,
+            libraryPath,
+            highlightingMethod,
+            request,
+          );
+        Js.log2("<<<", encoded);
+        Connection.send(encoded, connection);
+        connection;
+      });
+  };
+
+  let rec sendRequest = (dispatchCommand, request: Request.t, state: State.t) => {
+    let lastResponses = [||];
+
     // this promise get resolved after the request to Agda is completed
     let (promise, resolve) = Promise.pending();
     let handle = ref(None);
@@ -34,7 +64,7 @@ module Impl = (Editor: Sig.Editor) => {
             ++ " "
             ++ Response.toString(response),
           );
-          defer(priority, response);
+          Js.Array.push((priority, response), lastResponses)->ignore;
         }
       | Ok(Stop) => {
           Js.log(">>| ");
@@ -42,7 +72,7 @@ module Impl = (Editor: Sig.Editor) => {
         };
 
     state
-    ->State.sendRequestToAgda(req)
+    ->sendRequestToAgda(request)
     ->Promise.flatMap(
         fun
         | Ok(connection) => {
@@ -53,20 +83,8 @@ module Impl = (Editor: Sig.Editor) => {
             ErroM.handle(error, state)->flatMap(_ => promise);
           },
       )
-    ->Promise.tap(() => (handle^)->Option.forEach(f => f()));
-  }
-  and sendRequest = (dispatchCommand, request: Request.t, state: State.t) => {
-    let lastResponses = [||];
-
-    sendAgdaRequest(
-      dispatchCommand,
-      (priority, response) => {
-        Js.Array.push((priority, response), lastResponses)->ignore
-      },
-      state,
-      request,
-    )
-    ->map(_ => {
+    ->tap(() => (handle^)->Option.forEach(f => f())) // destructor
+    ->map(() => {
         Js.Array.sortInPlaceWith(
           (x, y) => compare(fst(x), fst(y)),
           lastResponses,
