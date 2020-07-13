@@ -61,7 +61,7 @@ module StateDict = {
 module Impl = (Editor: Sig.Editor) => {
   module States = StateDict.Impl(Editor);
   module State = State.Impl(Editor);
-  module CommandHandler = State__Command.Impl(Editor);
+  module CommM = State__Command.Impl(Editor);
 
   let addToSubscriptions = (f, context) =>
     f->Js.Array.push(context->ExtensionContext.subscriptions)->ignore;
@@ -142,9 +142,7 @@ module Impl = (Editor: Sig.Editor) => {
           // dispatch Tasks
           editor
           ->States.getByEditor
-          ->Option.forEach(state => {
-              CommandHandler.handle(state, command)->ignore
-            });
+          ->Option.forEach(state => {CommM.handle(command, state)->ignore});
         },
       )
       ->Editor.addToSubscriptions(context)

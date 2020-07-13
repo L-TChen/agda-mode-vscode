@@ -8,7 +8,7 @@ module Impl = (Editor: Sig.Editor) => {
   module DecoM = State__Decoration.Impl(Editor);
   module ConnM = State__Connection.Impl(Editor);
   module EditM = State__Editor.Impl(Editor);
-  let handle = (state: State.t, command) => {
+  let rec handle = (command, state: State.t) => {
     // let header = Command.toString(command);
     switch (command) {
     | Load =>
@@ -16,7 +16,7 @@ module Impl = (Editor: Sig.Editor) => {
       EditM.saveEditor(state)
       ->flatMap(EditM.saveCursor)
       ->flatMap(DecoM.removeAll)
-      ->flatMap(ConnM.sendRequest(Load));
+      ->flatMap(ConnM.sendRequest(handle, Load));
     | _ => resolved(state)
     };
   };

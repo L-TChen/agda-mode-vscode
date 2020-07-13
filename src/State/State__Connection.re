@@ -6,8 +6,9 @@ module Impl = (Editor: Sig.Editor) => {
   module State = State.Impl(Editor);
   module Request = Request.Impl(Editor);
   module ErroM = State__Error.Impl(Editor);
+  module RespM = State__Response.Impl(Editor);
   open Belt;
-  let sendAgdaRequest = (defer, state, req) => {
+  let rec sendAgdaRequest = (dispatchCommand, defer, state, req) => {
     // this promise get resolved after the request to Agda is completed
     let (promise, resolve) = Promise.pending();
     let handle = ref(None);
@@ -17,11 +18,14 @@ module Impl = (Editor: Sig.Editor) => {
       | Ok(Parser.Incr.Event.Yield(Error(error))) =>
         ErroM.handle(Error.Parser(error), state)->ignore
       | Ok(Yield(Ok(NonLast(response)))) => {
-          Js.log(
-            ">>> " ++ Response.toString(response),
-            // let tasks = ResponseHandler.handle(response);
-            // runTasks(tasks);
-          );
+          Js.log(">>> " ++ Response.toString(response));
+          RespM.handle(
+            dispatchCommand,
+            sendRequest(dispatchCommand),
+            response,
+            state,
+          )
+          ->ignore;
         }
       | Ok(Yield(Ok(Last(priority, response)))) => {
           Js.log(
@@ -30,7 +34,6 @@ module Impl = (Editor: Sig.Editor) => {
             ++ " "
             ++ Response.toString(response),
           );
-          // let tasks = ResponseHandler.handle(response);
           defer(priority, response);
         }
       | Ok(Stop) => {
@@ -51,9 +54,29 @@ module Impl = (Editor: Sig.Editor) => {
           },
       )
     ->Promise.tap(() => (handle^)->Option.forEach(f => f()));
-  };
+  }
+  and sendRequest = (dispatchCommand, request: Request.t, state: State.t) => {
+    let lastResponses = [||];
 
-  let sendRequest = (request: Request.t, state: State.t) => {
-    sendAgdaRequest((_, _) => (), state, request)->map(_ => state);
+    sendAgdaRequest(
+      dispatchCommand,
+      (priority, response) => {
+        Js.Array.push((priority, response), lastResponses)->ignore
+      },
+      state,
+      request,
+    )
+    ->map(_ => {
+        Js.Array.sortInPlaceWith(
+          (x, y) => compare(fst(x), fst(y)),
+          lastResponses,
+        )
+        ->Array.map(snd)
+        ->Array.forEach(response => {
+            // should handle response
+            Js.log(Response.toString(response))
+          });
+        state;
+      });
   };
 };
